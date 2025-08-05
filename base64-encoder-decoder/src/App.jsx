@@ -36,7 +36,9 @@ function App() {
     setCronError('');
     setSchedule([]);
     try {
-      const response = await fetch('/api/cron/schedule', {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const fetchUrl = `${apiUrl}/api/cron/schedule`;
+      const response = await fetch(fetchUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
