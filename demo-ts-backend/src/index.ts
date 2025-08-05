@@ -1,14 +1,18 @@
-
 import { Hono } from "hono";
 import { cors } from 'hono/cors';
 const cronParser = require('cron-parser');
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
-// Add CORS middleware
-// For production, you should restrict the origin to your frontend's domain
-// for better security, e.g., cors({ origin: 'https://your.frontend.com' })
-app.use('/api/*', cors());
+// Apply CORS middleware to the entire application
+app.use('*', cors({
+  origin: 'https://cloudflare-demo-3py.pages.dev',
+  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowHeaders: ['Content-Type'],
+}));
+
+// Hono automatically handles OPTIONS requests for routes defined below.
+// No need for a separate app.options handler.
 
 app.get("/message", (c) => {
   return c.text("Hello Hono!");
