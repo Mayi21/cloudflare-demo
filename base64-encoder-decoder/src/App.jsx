@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 
 function App() {
@@ -11,6 +10,11 @@ function App() {
   const [cronInput, setCronInput] = useState('* * * * *');
   const [schedule, setSchedule] = useState([]);
   const [cronError, setCronError] = useState('');
+
+  // State for URL Shortener
+  const [longUrl, setLongUrl] = useState('');
+  const [shortUrl, setShortUrl] = useState('');
+  const [shortenError, setShortenError] = useState('');
 
   const handleEncode = () => {
     try {
@@ -55,6 +59,32 @@ function App() {
       setSchedule(data.schedule);
     } catch (err) {
       setCronError(err.message);
+    }
+  };
+
+  const handleShortenUrl = async () => {
+    setShortenError('');
+    setShortUrl('');
+    try {
+      const baseApiUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      const fetchUrl = `${baseApiUrl}/api/shorten`;
+      const response = await fetch(fetchUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: longUrl }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'An error occurred while shortening the URL.');
+      }
+
+      setShortUrl(data.shortUrl);
+    } catch (err) {
+      setShortenError(err.message);
     }
   };
 
@@ -121,6 +151,41 @@ function App() {
       {cronError && (
         <div className="mt-4">
           <div className="alert alert-danger">{cronError}</div>
+        </div>
+      )}
+
+      <hr className="my-5" />
+
+      {/* URL Shortener Section */}
+      <h2 className="mb-4">URL Shortener</h2>
+      <div className="form-group">
+        <label htmlFor="long-url-input" className="form-label">Enter long URL:</label>
+        <input
+          id="long-url-input"
+          type="url"
+          className="form-control"
+          value={longUrl}
+          onChange={(e) => setLongUrl(e.target.value)}
+          placeholder="https://example.com/very/long/url/to/shorten"
+        />
+      </div>
+      <button className="btn btn-success mt-2" onClick={handleShortenUrl}>
+        Shorten URL
+      </button>
+      {shortUrl && (
+        <div className="mt-4">
+          <h3>Your Short URL:</h3>
+          <div className="input-group">
+            <input type="text" className="form-control" value={shortUrl} readOnly />
+            <button className="btn btn-outline-secondary" onClick={() => navigator.clipboard.writeText(shortUrl)}>
+              Copy
+            </button>
+          </div>
+        </div>
+      )}
+      {shortenError && (
+        <div className="mt-4">
+          <div className="alert alert-danger">{shortenError}</div>
         </div>
       )}
     </div>
