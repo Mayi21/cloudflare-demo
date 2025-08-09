@@ -20,7 +20,13 @@
 			"database_name": "short-url",
 			"database_id": "6c3bbaa9-4961-4949-b010-c90437fea253"
 		}
-	]
+	],
+	"kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "c5b5336fb1004284a5960d6c4c3b1bef"
+    }
+  ]
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

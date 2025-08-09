@@ -7,6 +7,7 @@ const cronParser = require('cron-parser');
 // Define the Cloudflare Bindings
 interface CloudflareBindings {
     DB: D1Database;
+    KV: KVNamespace;
 }
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
@@ -55,9 +56,15 @@ app.post("/api/shorten", async (c) => {
       return c.json({ error: 'Invalid URL provided.' }, 400);
     }
 
-    const code = nanoid(7); // Generate a 7-character unique ID
-    const stmt = c.env.DB.prepare("INSERT INTO short_links (code, url) VALUES (?, ?)");
-    await stmt.bind(code, url).run();
+    // Generate a 7-character unique ID and store in KV
+    let code = nanoid(7);
+    // Avoid rare collisions by retrying a few times if key exists
+    for (let i = 0; i < 3; i++) {
+      const exists = await c.env.KV.get(code);
+      if (!exists) break;
+      code = nanoid(7);
+    }
+    await c.env.KV.put(code, url);
 
     const shortUrl = `${new URL(c.req.url).origin}/${code}`;
     return c.json({ shortUrl });
@@ -72,12 +79,8 @@ app.post("/api/shorten", async (c) => {
 app.get("/:code", async (c) => {
   try {
     const { code } = c.req.param();
-    const stmt = c.env.DB.prepare("SELECT url FROM short_links WHERE code = ?");
-    const result = await stmt.bind(code).first();
-
-    if (result && result.url) {
-      return c.redirect(result.url, 301);
-    }
+    const url = await c.env.KV.get(code);
+    if (url) return c.redirect(url, 301);
 
     return c.text('Short link not found', 404);
 
