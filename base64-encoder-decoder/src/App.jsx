@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import * as echarts from 'echarts';
 
 function App() {
   // State for Base64 converter
@@ -15,6 +16,97 @@ function App() {
   const [longUrl, setLongUrl] = useState('');
   const [shortUrl, setShortUrl] = useState('');
   const [shortenError, setShortenError] = useState('');
+
+  // Analytics Dashboard state
+  const [overview, setOverview] = useState(null);
+  const [series, setSeries] = useState([]);
+  const [countries, setCountries] = useState([]);
+  const [statuses, setStatuses] = useState([]);
+  const [range, setRange] = useState('24h');
+  const [interval, setIntervalStr] = useState('1h');
+
+  const baseApiUrl = useMemo(() => (import.meta.env.VITE_API_URL || '').replace(/\/$/, ''), []);
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        const [o, t, c, s] = await Promise.all([
+          fetch(`${baseApiUrl}/api/metrics/overview?range=${range}`),
+          fetch(`${baseApiUrl}/api/metrics/timeseries?range=${range}&interval=${interval}`),
+          fetch(`${baseApiUrl}/api/metrics/countries?range=${range}`),
+          fetch(`${baseApiUrl}/api/metrics/status?range=${range}`),
+        ]);
+        const [oJson, tJson, cJson, sJson] = await Promise.all([o.json(), t.json(), c.json(), s.json()]);
+        setOverview(oJson);
+        setSeries(tJson.series || []);
+        setCountries(cJson.items || []);
+        setStatuses(sJson.items || []);
+      } catch (e) {
+        // ignore
+      }
+    };
+    fetchAll();
+    const id = setInterval(fetchAll, 8000);
+    return () => clearInterval(id);
+  }, [baseApiUrl, range, interval]);
+
+  useEffect(() => {
+    const lineEl = document.getElementById('chart-line');
+    const pieEl = document.getElementById('chart-pie');
+    const mapEl = document.getElementById('chart-map');
+    if (!lineEl || !pieEl || !mapEl) return;
+    const line = echarts.init(lineEl);
+    const pie = echarts.init(pieEl);
+    const map = echarts.init(mapEl);
+    line.setOption({
+      tooltip: { trigger: 'axis' },
+      legend: { data: ['PV', 'UV'] },
+      xAxis: { type: 'category', data: series.map(s => s.ts) },
+      yAxis: { type: 'value' },
+      series: [
+        { type: 'line', name: 'PV', data: series.map(s => s.pv) },
+        { type: 'line', name: 'UV', data: series.map(s => s.uv) },
+      ]
+    });
+    pie.setOption({
+      tooltip: { trigger: 'item' },
+      series: [{
+        type: 'pie',
+        radius: '60%',
+        data: statuses.map(i => ({ name: String(i.status), value: i.cnt })),
+      }]
+    });
+
+    // Load world map geojson dynamically; fallback to bar if failed
+    const loadWorld = async () => {
+      try {
+        const res = await fetch('https://fastly.jsdelivr.net/npm/echarts@5/map/json/world.json');
+        const geoJson = await res.json();
+        echarts.registerMap('world', geoJson);
+        map.setOption({
+          tooltip: { trigger: 'item' },
+          visualMap: { min: 0, max: Math.max(1, ...countries.map(c => c.cnt)), left: 'left', top: 'bottom', text: ['High','Low'], calculable: true },
+          series: [{
+            type: 'map',
+            map: 'world',
+            roam: true,
+            data: countries.map(c => ({ name: c.country || 'Unknown', value: c.cnt })),
+          }]
+        });
+      } catch (e) {
+        map.setOption({
+          tooltip: { trigger: 'axis' },
+          xAxis: { type: 'category', data: countries.map(c => c.country || 'Unknown') },
+          yAxis: { type: 'value' },
+          series: [{ type: 'bar', data: countries.map(c => c.cnt) }]
+        });
+      }
+    };
+    loadWorld();
+    const onResize = () => { line.resize(); pie.resize(); };
+    window.addEventListener('resize', onResize);
+    return () => { window.removeEventListener('resize', onResize); line.dispose(); pie.dispose(); map.dispose(); };
+  }, [series, statuses, countries]);
 
   const handleEncode = () => {
     try {
@@ -120,6 +212,52 @@ function App() {
       )}
 
       <hr className="my-5" />
+
+      {/* Analytics Dashboard */}
+      <h2 className="mb-3">Analytics Dashboard</h2>
+      <div className="row mb-3">
+        <div className="col-auto">
+          <label className="form-label">Range</label>
+          <select className="form-select" value={range} onChange={e => setRange(e.target.value)}>
+            <option value="1h">1h</option>
+            <option value="6h">6h</option>
+            <option value="12h">12h</option>
+            <option value="24h">24h</option>
+            <option value="7d">7d</option>
+          </select>
+        </div>
+        <div className="col-auto">
+          <label className="form-label">Interval</label>
+          <select className="form-select" value={interval} onChange={e => setIntervalStr(e.target.value)}>
+            <option value="5m">5m</option>
+            <option value="15m">15m</option>
+            <option value="1h">1h</option>
+          </select>
+        </div>
+      </div>
+      {overview && (
+        <div className="row mb-3">
+          <div className="col">
+            <div className="alert alert-primary">Total Requests: {overview.totalRequests}</div>
+          </div>
+          <div className="col">
+            <div className="alert alert-success">Unique Visitors: {overview.uniqueVisitors}</div>
+          </div>
+        </div>
+      )}
+      <div className="row">
+        <div className="col-md-8">
+          <div id="chart-line" style={{ height: 360 }} />
+        </div>
+        <div className="col-md-4">
+          <div id="chart-pie" style={{ height: 360 }} />
+        </div>
+      </div>
+      <div className="row mt-3">
+        <div className="col-12">
+          <div id="chart-map" style={{ height: 420 }} />
+        </div>
+      </div>
 
       {/* Cron Scheduler Section */}
       <h2 className="mb-4">Cron Expression Scheduler</h2>
